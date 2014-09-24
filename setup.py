@@ -5,6 +5,9 @@ def desc():
     with open("README.md") as f:
         return f.read()
 
+def reqs():
+    with open('requirements.txt') as f:
+        return f.read().splitlines()
 
 setup(
     name='frasco-babel',
@@ -17,9 +20,5 @@ setup(
     long_description=desc(),
     py_modules=['frasco_babel'],
     platforms='any',
-    install_requires=[
-        'frasco',
-        'Flask-Babel==0.9',
-        'goslate==1.3.0'
-    ]
+    install_requires=reqs() + ['frasco']
 )
