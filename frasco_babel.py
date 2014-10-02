@@ -170,7 +170,7 @@ class BabelFeature(Feature):
         setattr(user, self.options["user_locale_column"], locale or get_locale().language)
         setattr(user, self.options["user_timezone_column"], timezone or get_timezone().zone)
         setattr(user, self.options["user_currency_column"], currency or get_currency())
-        self.app.features.models.save(user)
+        user.save()
 
     @hook()
     def before_request(self):
