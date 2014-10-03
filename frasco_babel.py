@@ -90,6 +90,10 @@ class BabelFeature(Feature):
 
         if self.options["store_locale_in_user"]:
             signal("user_signup").connect(lambda _, u: self.update_user(u))
+            app.features.models.ensure_model(app.features.users.model, **dict([
+                (self.options['user_locale_column'], str),
+                (self.options['user_timezone_column'], str),
+                (self.options['user_currency_column'], str)]))
 
     def add_extract_dir(self, path, jinja_dirs=None, jinja_exts=None, extractors=None):
         jinja_exts = jinja_exts or []
