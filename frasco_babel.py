@@ -51,7 +51,7 @@ class BabelFeature(Feature):
                 "currencies": ["USD"],
                 "default_currency": "USD",
                 "currency_name_format": u"{name} ({symbol})",
-                "store_locale_in_user": True,
+                "store_locale_in_user": False,
                 "user_locale_column": "locale",
                 "user_timezone_column": "timezone",
                 "user_currency_column": "currency",
