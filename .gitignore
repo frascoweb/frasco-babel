@@ -1,1 +1,4 @@
 *.pyc
+/build
+/dist
+/frasco_babel.egg-info

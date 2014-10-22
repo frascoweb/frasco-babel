@@ -1,14 +1,6 @@
 from setuptools import setup
 
 
-def desc():
-    with open("README.md") as f:
-        return f.read()
-
-def reqs():
-    with open('requirements.txt') as f:
-        return f.read().splitlines()
-
 setup(
     name='frasco-babel',
     version='0.1',
@@ -17,8 +9,12 @@ setup(
     author='Maxime Bouroumeau-Fuseau',
     author_email='maxime.bouroumeau@gmail.com',
     description="I18n and L10n support for Frasco",
-    long_description=desc(),
     py_modules=['frasco_babel'],
+    zip_safe=False,
     platforms='any',
-    install_requires=reqs() + ['frasco']
+    install_requires=[
+        # 'frasco',
+        'Flask-Babel>=0.9',
+        'goslate>=1.3.0'
+    ]
 )
