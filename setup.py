@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 setup(
@@ -9,11 +9,11 @@ setup(
     author='Maxime Bouroumeau-Fuseau',
     author_email='maxime.bouroumeau@gmail.com',
     description="I18n and L10n support for Frasco",
-    py_modules=['frasco_babel'],
+    packages=find_packages(),
     zip_safe=False,
     platforms='any',
     install_requires=[
-        # 'frasco',
+        'frasco',
         'Flask-Babel>=0.9',
         'goslate>=1.3.0'
     ]
