@@ -89,11 +89,14 @@ class BabelFeature(Feature):
         app.jinja_env.filters["currencyformat"] = format_currency
 
         if self.options["store_locale_in_user"]:
-            signal("user_signup").connect(lambda _, u: self.update_user(u))
-            app.features.models.ensure_model(app.features.users.model, **dict([
-                (self.options['user_locale_column'], str),
-                (self.options['user_timezone_column'], str),
-                (self.options['user_currency_column'], str)]))
+            signal('users_init').connect(self.init_user_model)
+
+    def init_user_model(self, sender):
+        signal("user_signup").connect(lambda _, u: self.update_user(u))
+        sender.features.models.ensure_model(sender.features.users.model, **dict([
+            (self.options['user_locale_column'], str),
+            (self.options['user_timezone_column'], str),
+            (self.options['user_currency_column'], str)]))
 
     def add_extract_dir(self, path, jinja_dirs=None, jinja_exts=None, extractors=None):
         jinja_exts = jinja_exts or []
@@ -190,12 +193,21 @@ class BabelFeature(Feature):
             name=locale.currencies[currency],
             symbol=locale.currency_symbols[currency])
 
+        if current_app.features.exists('assets'):
+            current_app.config['EXPORTED_JS_VARS']['CURRENT_LOCALE'] = {
+                "locale": current_context['current_locale'],
+                "lang": current_context['current_language'],
+                "timezone": current_context['current_timezone'],
+                "currency": current_context['current_currency'],
+                "currency_name": current_context['current_currency_name']}
+
     @hook('template_global', _force_call=True)
-    def available_locales(self):
+    def available_locales(self, english_name=False):
         locales = []
         for language in self.options["locales"]:
             locale = Locale(language)
-            locales.append((language, locale.display_name, locale.english_name))
+            name = locale.english_name if english_name else locale.display_name
+            locales.append((language, name))
         return locales
 
     @hook('template_global', _force_call=True)
@@ -206,15 +218,16 @@ class BabelFeature(Feature):
             currencies.append((currency, locale.currencies[currency], locale.currency_symbols[currency]))
         return currencies
 
-    @command()
-    def extract(self, bin="pybabel", keywords=None):
-        if not os.path.exists("translations"):
-            os.mkdir("translations")
-        potfile = os.path.join("translations", "messages.pot")
+    @command(pass_script_info=True)
+    def extract(self, info, bin="pybabel", keywords=None):
+        path = os.path.join(info.app_import_path, "translations")
+        if not os.path.exists(path):
+            os.mkdir(path)
+        potfile = os.path.join(path, "messages.pot")
 
         mapping = create_babel_mapping(self.options["extract_jinja_dirs"],
             self.options["extract_with_jinja_exts"], self.options["extractors"])
-        self._extract(".", potfile, mapping, bin, keywords)
+        self._extract(info.app_import_path, potfile, mapping, bin, keywords)
 
         # we need to extract message from other paths independently then
         # merge the catalogs because babel's mapping configuration does
@@ -236,8 +249,8 @@ class BabelFeature(Feature):
             mapping_file.write(mapping)
             mapping_file.flush()
 
-        if isinstance(keywords, str):
-            keywords = map(str.strip, keywords.split(","))
+        if isinstance(keywords, (str, unicode)):
+            keywords = map(str.strip, str(keywords).split(","))
         elif not keywords:
             keywords = []
         keywords.extend(["translate", "ntranslate", "lazy_translate", "lazy_gettext"])
@@ -255,41 +268,44 @@ class BabelFeature(Feature):
         if mapping:
             mapping_file.close()
 
-    @command("init")
-    def init_translation(self, locale, bin="pybabel", gotrans=False):
-        potfile = os.path.join(self.app.root_path, "translations", "messages.pot")
+    @command("init", pass_script_info=True)
+    def init_translation(self, info, locale, bin="pybabel", gotrans=False):
+        path = os.path.join(info.app_import_path, "translations")
+        potfile = os.path.join(path, "messages.pot")
         if not os.path.exists(potfile):
-            self.extract(bin)
-        command.echo("Initializing new translation '%s' in %s" % (locale, os.path.join("translations", locale)))
-        shell_exec([bin, "init", "-i", potfile, "-d", "translations", "-l", locale])
+            self.extract(info, bin)
+        command.echo("Initializing new translation '%s' in %s" % (locale, os.path.join(path, locale)))
+        shell_exec([bin, "init", "-i", potfile, "-d", path, "-l", locale])
         self.translation_updated_signal.send(self, locale=locale)
         if gotrans:
-            self.translate_with_google(locale)
+            self.translate_with_google(info, locale)
 
-    @command("compile")
-    def compile_translations(self, bin="pybabel"):
+    @command("compile", pass_script_info=True)
+    def compile_translations(self, info, bin="pybabel"):
         command.echo("Compiling all translations")
-        shell_exec([bin, "compile", "-d", "translations"])
+        shell_exec([bin, "compile", "-d", os.path.join(info.app_import_path, "translations")])
 
-    @command("update")
-    def update_translations(self, bin="pybabel", extract=True, gotrans=False):
-        potfile = os.path.join("translations", "messages.pot")
+    @command("update", pass_script_info=True)
+    def update_translations(self, info, bin="pybabel", extract=True, gotrans=False):
+        path = os.path.join(info.app_import_path, "translations")
+        potfile = os.path.join(path, "messages.pot")
         if not os.path.exists(potfile) or extract:
-            self.extract(bin)
+            self.extract(info, bin)
         command.echo("Updating all translations")
-        shell_exec([bin, "update", "-i", potfile, "-d", "translations"])
-        for f in os.listdir("translations"):
-            if os.path.isdir(os.path.join("translations", f)):
+        shell_exec([bin, "update", "-i", potfile, "-d", path])
+        for f in os.listdir(path):
+            if os.path.isdir(os.path.join(path, f)):
                 self.translation_updated_signal.send(self, locale=f)
                 if gotrans:
-                    self.translate_with_google(f)
+                    self.translate_with_google(info, f)
 
-    @command("gotrans")
-    def translate_with_google(self, locale):
+    @command("gotrans", pass_script_info=True)
+    def translate_with_google(self, info, locale):
         import goslate
         command.echo("Google translating '%s'" % locale)
         command.echo("WARNING: you must go through the translation after the process as placeholders may have been modified", fg="red")
-        with self.edit_pofile(locale=locale) as catalog:
+        filename = os.path.join(info.app_import_path, "translations", locale, "LC_MESSAGES", "messages.po")
+        with self.edit_pofile(filename) as catalog:
             gs = goslate.Goslate()
             for message in catalog:
                 if message.id and not message.string:
@@ -300,10 +316,8 @@ class BabelFeature(Feature):
                     message.string = unsafe_placeholders(string, placeholders, "## %s ##")
 
     @contextlib.contextmanager
-    def edit_pofile(self, filename=None, locale=None, save=True):
+    def edit_pofile(self, filename, save=True):
         from babel.messages import pofile
-        if not filename:
-            filename = os.path.join("translations", locale, "LC_MESSAGES", "messages.po")
         with open(filename, "r") as f:
             catalog = pofile.read_po(f)
         yield catalog
@@ -317,6 +331,8 @@ def create_babel_mapping(jinja_dirs=None, jinja_exts=None, extractors=None):
     conf = "[python:**.py]\n"
     if jinja_dirs:
         for jinja_dir in jinja_dirs:
+            if jinja_dir == '.':
+                jinja_dir = ''
             conf += "[jinja2:%s]\n" % os.path.join(jinja_dir, "**.html")
             if exts:
                 conf += "extensions=%s\n" % exts
@@ -341,3 +357,13 @@ def unsafe_placeholders(string, placeholders, repl="##%s##"):
     for i, placeholder in enumerate(placeholders):
         string = string.replace(repl % i, "%%(%s)s" % placeholder)
     return string
+
+
+try:
+    import frasco_forms.form
+    import form
+    frasco_forms.form.field_type_map.update({
+        "locale": form.LocaleField,
+        "currency": form.CurrencyField})
+except ImportError:
+    pass
