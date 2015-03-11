@@ -51,11 +51,14 @@ class BabelFeature(Feature):
                 "currencies": ["USD"],
                 "default_currency": "USD",
                 "currency_name_format": u"{name} ({symbol})",
+                "store_locale_in_session": True,
                 "store_locale_in_user": False,
                 "user_locale_column": "locale",
                 "user_timezone_column": "timezone",
                 "user_currency_column": "currency",
                 "extract_locale_from_request": False,
+                "always_add_locale_to_urls": True,
+                "store_request_locale_in_session": False,
                 "request_arg": "locale",
                 "extractors": [],
                 "extract_jinja_dirs": ["views", "templates", "emails", "features"],
@@ -107,13 +110,16 @@ class BabelFeature(Feature):
     def detect_locale(self):
         if self.options["extract_locale_from_request"]:
             if self.options["request_arg"] in request.args:
-                return request.args[self.options["request_arg"]]
+                locale = request.args[self.options["request_arg"]]
+                if self.options["store_request_locale_in_session"]:
+                    session["locale"] = locale
+                return locale
         if self.options["store_locale_in_user"] and self.app.features.exists("users"):
             if self.app.features.users.logged_in():
                 locale = getattr(self.app.features.users.current, self.options["user_locale_column"], None)
                 if locale:
                     return locale
-        if "locale" in session:
+        if self.options["store_locale_in_session"] and "locale" in session:
             return session["locale"]
         return request.accept_languages.best_match(self.options["locales"])
 
@@ -123,7 +129,7 @@ class BabelFeature(Feature):
                 tz = getattr(self.app.features.users.current, self.options["user_timezone_column"], None)
                 if tz:
                     return tz
-        if "timezone" in session:
+        if self.options["store_locale_in_session"] and "timezone" in session:
             return session["timezone"]
         return None
 
@@ -133,7 +139,7 @@ class BabelFeature(Feature):
                 currency = getattr(self.app.features.users.current, self.options["user_currency_column"], None)
                 if currency:
                     return currency
-        if "currency" in session:
+        if self.options["store_locale_in_session"] and "currency" in session:
             return session["currency"]
         return None
         
@@ -145,7 +151,8 @@ class BabelFeature(Feature):
     @hook('url_defaults')
     def add_locale_to_url_params(self, endpoint, values):
         if endpoint not in self.options["request_locale_arg_ignore_endpoints"] and \
-          self.options["extract_locale_from_request"] and self.options["request_arg"] not in values:
+          self.options["extract_locale_from_request"] and self.options['always_add_locale_to_urls'] and \
+          self.options["request_arg"] not in values:
             values[self.options["request_arg"]] = get_locale().language
 
     @action(default_option="locale")
@@ -154,7 +161,8 @@ class BabelFeature(Feature):
             if app.features.users.logged_in():
                 self.update_user(current_app.features.users.current, locale=locale)
                 return
-        session["locale"] = locale
+        if self.options["store_locale_in_session"]:
+            session["locale"] = locale
         if refresh:
             refresh_babel()
 
@@ -164,7 +172,8 @@ class BabelFeature(Feature):
             if app.features.users.logged_in():
                 self.update_user(current_app.features.users.current, timezone=tz)
                 return
-        session["timezone"] = tz
+        if self.options["store_locale_in_session"]:
+            session["timezone"] = tz
 
     @action(default_option="currency")
     def set_currency(self, currency):
@@ -172,7 +181,8 @@ class BabelFeature(Feature):
             if app.features.users.logged_in():
                 self.update_user(current_app.features.users.current, currency=currency)
                 return
-        session["currency"] = currency
+        if self.options["store_locale_in_session"]:
+            session["currency"] = currency
 
     def update_user(self, user, locale=None, timezone=None, currency=None):
         setattr(user, self.options["user_locale_column"], locale or get_locale().language)
