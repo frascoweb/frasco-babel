@@ -1,5 +1,5 @@
 from frasco import (Feature, action, hook, set_translation_callbacks, copy_extra_feature_options,\
-                    session, request, signal, current_app, command, shell_exec, current_context)
+                    session, request, signal, current_app, command, shell_exec, current_context, json)
 from flask.ext.babel import (Babel, gettext, ngettext, lazy_gettext, format_datetime, format_date,\
                              format_time, format_currency as babel_format_currency, get_locale,\
                              get_timezone, refresh as refresh_babel)
@@ -64,7 +64,8 @@ class BabelFeature(Feature):
                     "jinja_layout.LayoutExtension", "jinja_macro_tags.LoadMacroExtension",
                     "jinja_macro_tags.CallMacroTagExtension", "jinja_macro_tags.JinjaMacroTagsExtension",
                     "jinja_macro_tags.HtmlMacroTagsExtension", "frasco.templating.FlashMessagesExtension"],
-                "request_locale_arg_ignore_endpoints": ["static", "static_upload"]}
+                "request_locale_arg_ignore_endpoints": ["static", "static_upload"],
+                "compile_to_json": None}
 
     translation_updated_signal = signal("translation_updated")
 
@@ -250,10 +251,10 @@ class BabelFeature(Feature):
             mapping_file.flush()
 
         if isinstance(keywords, (str, unicode)):
-            keywords = map(str.strip, str(keywords).split(","))
+            keywords = map(str.strip, str(keywords).split(";"))
         elif not keywords:
             keywords = []
-        keywords.extend(["translate", "ntranslate", "lazy_translate", "lazy_gettext"])
+        keywords.extend(["_n:1,2", "translate", "ntranslate", "lazy_translate", "lazy_gettext"])
 
         cmdline = [bin, "extract", "-o", potfile]
         if mapping:
@@ -283,7 +284,13 @@ class BabelFeature(Feature):
     @command("compile", pass_script_info=True)
     def compile_translations(self, info, bin="pybabel"):
         command.echo("Compiling all translations")
-        shell_exec([bin, "compile", "-d", os.path.join(info.app_import_path, "translations")])
+        path = os.path.join(info.app_import_path, "translations")
+        shell_exec([bin, "compile", "-d", path])
+        if self.options['compile_to_json']:
+            output = os.path.join(current_app.static_folder, self.options['compile_to_json'])
+            for f in os.listdir(path):
+                if os.path.isdir(os.path.join(path, f)):
+                    self.po2json(info, f, output % f)
 
     @command("update", pass_script_info=True)
     def update_translations(self, info, bin="pybabel", extract=True, gotrans=False):
@@ -305,15 +312,48 @@ class BabelFeature(Feature):
         command.echo("Google translating '%s'" % locale)
         command.echo("WARNING: you must go through the translation after the process as placeholders may have been modified", fg="red")
         filename = os.path.join(info.app_import_path, "translations", locale, "LC_MESSAGES", "messages.po")
+        
+        def translate(id):
+            # google translate messes with the format placeholders thus
+            # we replace them with something which is easily recoverable
+            string, placeholders = safe_placeholders(id)
+            string = gs.translate(string, locale)
+            return unsafe_placeholders(string, placeholders, "## %s ##")
+
         with self.edit_pofile(filename) as catalog:
             gs = goslate.Goslate()
             for message in catalog:
-                if message.id and not message.string:
-                    # google translate messes with the format placeholders thus
-                    # we replace them with something which is easily recoverable
-                    string, placeholders = safe_placeholders(message.id)
-                    string = gs.translate(string, locale)
-                    message.string = unsafe_placeholders(string, placeholders, "## %s ##")
+                if not message.id:
+                    continue
+                if message.pluralizable:
+                    string = list(message.string)
+                    if not string[0]:
+                        string[0] = translate(message.id[0])
+                    if not string[1]:
+                        string[1] = translate(message.id[1])
+                    message.string = tuple(string)
+                elif not message.string:
+                    message.string = translate(message.id)
+
+    @command(pass_script_info=True)
+    def po2json(self, info, locale, output=None):
+        filename = os.path.join(info.app_import_path, "translations", locale, "LC_MESSAGES", "messages.po")
+        json_dct = {}
+        with self.edit_pofile(filename) as catalog:
+            for message in catalog:
+                if not message.id:
+                    continue
+                if message.pluralizable:
+                    json_dct[message.id[0]] = [message.id[1]] + list(message.string)
+                else:
+                    json_dct[message.id] = [None, message.string]
+        dump = json.dumps(json_dct)
+        if output:
+            command.echo('Converting %s to %s' % (filename, output))
+            with open(output, 'w') as f:
+                f.write(dump)
+        else:
+            command.echo(dump)
 
     @contextlib.contextmanager
     def edit_pofile(self, filename, save=True):
