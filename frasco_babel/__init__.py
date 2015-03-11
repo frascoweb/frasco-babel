@@ -70,7 +70,9 @@ class BabelFeature(Feature):
                 "request_locale_arg_ignore_endpoints": ["static", "static_upload"],
                 "compile_to_json": None}
 
+    translation_extracted_signal = signal("translation_extracted")
     translation_updated_signal = signal("translation_updated")
+    translation_compiled_signal = signal("translation_compiled")
 
     def init_app(self, app):
         copy_extra_feature_options(self, app.config, "BABEL_")
@@ -254,6 +256,8 @@ class BabelFeature(Feature):
                             catalog[msg.id] = msg
             path_potfile.close()
 
+        self.translation_extracted_signal.send(self)
+
     def _extract(self, path, potfile, mapping=None, bin="pybabel", keywords=None):
         if mapping:
             mapping_file = tempfile.NamedTemporaryFile()
@@ -264,7 +268,8 @@ class BabelFeature(Feature):
             keywords = map(str.strip, str(keywords).split(";"))
         elif not keywords:
             keywords = []
-        keywords.extend(["_n:1,2", "translate", "ntranslate", "lazy_translate", "lazy_gettext"])
+        keywords.extend(["_n:1,2", "translatable", "translate", "ntranslate",
+                         "lazy_translate", "lazy_gettext"])
 
         cmdline = [bin, "extract", "-o", potfile]
         if mapping:
@@ -301,6 +306,7 @@ class BabelFeature(Feature):
             for f in os.listdir(path):
                 if os.path.isdir(os.path.join(path, f)):
                     self.po2json(info, f, output % f)
+        self.translation_compiled_signal.send(self)
 
     @command("update", pass_script_info=True)
     def update_translations(self, info, bin="pybabel", extract=True, gotrans=False):
