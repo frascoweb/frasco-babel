@@ -192,6 +192,10 @@ class BabelFeature(Feature):
         setattr(user, self.options["user_currency_column"], currency or get_currency())
         user.save()
 
+    @action('refresh_locale')
+    def refresh(self):
+        refresh_babel()
+
     @hook()
     def before_request(self):
         locale = get_locale()
