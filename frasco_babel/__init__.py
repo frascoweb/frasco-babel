@@ -187,10 +187,11 @@ class BabelFeature(Feature):
             session["currency"] = currency
 
     def update_user(self, user, locale=None, timezone=None, currency=None):
-        setattr(user, self.options["user_locale_column"], locale or get_locale().language)
-        setattr(user, self.options["user_timezone_column"], timezone or get_timezone().zone)
-        setattr(user, self.options["user_currency_column"], currency or get_currency())
-        current_app.features.models.backend.save(user)
+        with current_app.features.models.transaction() as tx:
+            setattr(user, self.options["user_locale_column"], locale or get_locale().language)
+            setattr(user, self.options["user_timezone_column"], timezone or get_timezone().zone)
+            setattr(user, self.options["user_currency_column"], currency or get_currency())
+            tx.add(user)
 
     @action('refresh_locale')
     def refresh(self):
