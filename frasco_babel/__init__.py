@@ -68,7 +68,9 @@ class BabelFeature(Feature):
                     "jinja_macro_tags.CallMacroTagExtension", "jinja_macro_tags.JinjaMacroTagsExtension",
                     "jinja_macro_tags.HtmlMacroTagsExtension", "frasco.templating.FlashMessagesExtension"],
                 "request_locale_arg_ignore_endpoints": ["static", "static_upload"],
-                "compile_to_json": None}
+                "compile_to_json": False,
+                "compile_to_js": False,
+                "js_catalog_varname": "LOCALE_%s_CATALOG"}
 
     translation_extracted_signal = signal("translation_extracted")
     translation_updated_signal = signal("translation_updated")
@@ -219,6 +221,9 @@ class BabelFeature(Feature):
                 "currency": current_context['current_currency'],
                 "currency_name": current_context['current_currency_name']}
 
+            if self.options['compile_to_js']:
+                current_app.config['EXPORTED_JS_VARS']['CURRENT_LOCALE']['catalog_var'] = self.options['js_catalog_varname'] % current_context['current_locale'].upper()
+
     @hook('template_global', _force_call=True)
     def available_locales(self, english_name=False):
         locales = []
@@ -311,6 +316,12 @@ class BabelFeature(Feature):
             for f in os.listdir(path):
                 if os.path.isdir(os.path.join(path, f)):
                     self.po2json(info, f, output % f)
+        if self.options['compile_to_js']:
+            output = os.path.join(current_app.static_folder, self.options['compile_to_js'])
+            for f in os.listdir(path):
+                if os.path.isdir(os.path.join(path, f)):
+                    self.po2js(info, f, output % f)
+
         self.translation_compiled_signal.send(self)
 
     @command("update", pass_script_info=True)
@@ -356,8 +367,7 @@ class BabelFeature(Feature):
                 elif not message.string:
                     message.string = translate(message.id)
 
-    @command(pass_script_info=True)
-    def po2json(self, info, locale, output=None):
+    def _po2json(self, info, locale):
         filename = os.path.join(info.app_import_path, "translations", locale, "LC_MESSAGES", "messages.po")
         json_dct = {}
         with self.edit_pofile(filename) as catalog:
@@ -368,9 +378,21 @@ class BabelFeature(Feature):
                     json_dct[message.id[0]] = [message.id[1]] + list(message.string)
                 else:
                     json_dct[message.id] = [None, message.string]
-        dump = json.dumps(json_dct)
+        return json.dumps(json_dct)
+
+    @command(pass_script_info=True)
+    def po2json(self, info, locale, output=None):
+        dump = self._po2json(info, locale)
         if output:
-            command.echo('Converting %s to %s' % (filename, output))
+            with open(output, 'w') as f:
+                f.write(dump)
+        else:
+            command.echo(dump)
+
+    @command(pass_script_info=True)
+    def po2js(self, info, locale, output=None):
+        dump = "var %s = %s;" % (self.options['js_catalog_varname'] % locale.upper(), self._po2json(info, locale))
+        if output:
             with open(output, 'w') as f:
                 f.write(dump)
         else:
