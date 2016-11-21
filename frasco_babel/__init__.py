@@ -100,7 +100,7 @@ class BabelFeature(Feature):
             signal('users_init').connect(self.init_user_model)
 
     def init_user_model(self, sender):
-        signal("user_signup").connect(lambda _, u: self.update_user(u))
+        signal("user_signup").connect(lambda _, user: self.update_user(user), weak=False)
         sender.features.models.ensure_model(sender.features.users.model, **dict([
             (self.options['user_locale_column'], str),
             (self.options['user_timezone_column'], str),
