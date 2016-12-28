@@ -1,6 +1,6 @@
 from frasco import (Feature, action, hook, set_translation_callbacks, copy_extra_feature_options,\
                     session, request, signal, current_app, command, shell_exec, current_context, json)
-from flask.ext.babel import (Babel, gettext, ngettext, lazy_gettext, format_datetime, format_date,\
+from flask_babel import (Babel, gettext, ngettext, lazy_gettext, format_datetime, format_date,\
                              format_time, format_currency as babel_format_currency, get_locale,\
                              get_timezone, refresh as refresh_babel)
 from babel import Locale
