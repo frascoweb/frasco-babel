@@ -4,7 +4,7 @@ from flask_babel import (Babel, gettext, ngettext, lazy_gettext, format_datetime
                              format_time, format_currency as babel_format_currency, get_locale,\
                              get_timezone, refresh as refresh_babel)
 from babel import Locale
-from flask import _request_ctx_stack
+from flask import _request_ctx_stack, has_request_context
 import os
 import tempfile
 import contextlib
@@ -20,12 +20,14 @@ def get_currency():
     a request. If flask-babel was not attached to application, will
     return UTC timezone object.
     """
-    ctx = _request_ctx_stack.top
-    currency = getattr(ctx, 'babel_currency', None)
-
-    if currency is None:
+    ctx = _request_ctx_stack.top if has_request_context() else None
+    currency = None
+    babel = None
+    if ctx:
+        currency = getattr(ctx, 'babel_currency', None)
         babel = ctx.app.extensions.get('babel')
 
+    if currency is None:
         if babel is None:
             currency = _DEFAULT_CURRENCY
         else:
@@ -35,8 +37,8 @@ def get_currency():
                 currency = babel.currency_selector_func()
                 if currency is None:
                     currency = babel.default_currency
-
-        ctx.babel_currency = currency
+        if ctx:
+            ctx.babel_currency = currency
 
     return currency
 
@@ -112,7 +114,7 @@ class BabelFeature(Feature):
         self.extract_dirs.append((path, jinja_dirs, jinja_exts, extractors))
 
     def detect_locale(self):
-        if self.options["extract_locale_from_request"]:
+        if has_request_context() and self.options["extract_locale_from_request"]:
             if self.options["request_arg"] in request.args:
                 locale = request.args[self.options["request_arg"]]
                 if self.options["store_request_locale_in_session"]:
@@ -123,6 +125,8 @@ class BabelFeature(Feature):
                 locale = getattr(self.app.features.users.current, self.options["user_locale_column"], None)
                 if locale:
                     return locale
+        if not has_request_context():
+            return
         if self.options["store_locale_in_session"] and "locale" in session:
             return session["locale"]
         return request.accept_languages.best_match(self.options["locales"])
@@ -133,9 +137,10 @@ class BabelFeature(Feature):
                 tz = getattr(self.app.features.users.current, self.options["user_timezone_column"], None)
                 if tz:
                     return tz
+        if not has_request_context():
+            return
         if self.options["store_locale_in_session"] and "timezone" in session:
             return session["timezone"]
-        return None
 
     def detect_currency(self):
         if self.options["store_locale_in_user"] and self.app.features.exists("users"):
@@ -143,9 +148,10 @@ class BabelFeature(Feature):
                 currency = getattr(self.app.features.users.current, self.options["user_currency_column"], None)
                 if currency:
                     return currency
+        if not has_request_context():
+            return
         if self.options["store_locale_in_session"] and "currency" in session:
             return session["currency"]
-        return None
         
     @hook('url_value_preprocessor')
     def extract_locale_from_values(self, endpoint, values):
