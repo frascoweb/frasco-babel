@@ -63,6 +63,7 @@ class BabelFeature(Feature):
                 "store_request_locale_in_session": False,
                 "request_arg": "locale",
                 "extractors": [],
+                "extract_keywords": [],
                 "extract_jinja_dirs": ["views", "templates", "emails", "features"],
                 "extract_with_jinja_exts": ["jinja2.ext.autoescape", "jinja2.ext.with_",
                     "jinja2.ext.do", "frasco.templating.RemoveYamlFrontMatterExtension",
@@ -286,6 +287,7 @@ class BabelFeature(Feature):
             keywords = []
         keywords.extend(["_n:1,2", "translatable", "translate", "ntranslate",
                          "lazy_translate", "lazy_gettext"])
+        keywords.extend(self.options['extract_keywords'])
 
         cmdline = [bin, "extract", "-o", potfile]
         if mapping:
