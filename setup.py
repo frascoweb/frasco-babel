@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='frasco-babel',
-    version='0.4.6',
+    version='0.4.7',
     url='http://github.com/frascoweb/frasco-babel',
     license='MIT',
     author='Maxime Bouroumeau-Fuseau',

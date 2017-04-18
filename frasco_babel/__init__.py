@@ -58,6 +58,7 @@ class BabelFeature(Feature):
                 "user_locale_column": "locale",
                 "user_timezone_column": "timezone",
                 "user_currency_column": "currency",
+                "extract_locale_from_headers": True,
                 "extract_locale_from_request": False,
                 "always_add_locale_to_urls": True,
                 "store_request_locale_in_session": False,
@@ -130,7 +131,8 @@ class BabelFeature(Feature):
             return
         if self.options["store_locale_in_session"] and "locale" in session:
             return session["locale"]
-        return request.accept_languages.best_match(self.options["locales"])
+        if self.options['extract_locale_from_headers']:
+            return request.accept_languages.best_match(self.options["locales"])
 
     def detect_timezone(self):
         if self.options["store_locale_in_user"] and self.app.features.exists("users"):
